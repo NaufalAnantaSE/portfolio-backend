@@ -1,12 +1,4 @@
-const express = require('express');
-const cors = require('cors');
 const Groq = require('groq-sdk');
-
-const app = express();
-
-// Middleware
-app.use(cors());
-app.use(express.json());
 
 // Initialize Groq
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -78,66 +70,85 @@ const seoSettings = {
   updatedAt: new Date().toISOString()
 };
 
-// ============== ROUTES ==============
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-// Health check
-app.get('/api', (req, res) => {
-  res.json({ status: 'ok', message: 'Portfolio API is running' });
-});
-
-// Personal Info
-app.get('/api/personal-info', (req, res) => {
-  res.json(personalInfo);
-});
-
-// Tech Stacks
-app.get('/api/tech-stacks', (req, res) => {
-  res.json(techStacks.filter(t => t.isActive));
-});
-
-// Projects
-app.get('/api/projects', (req, res) => {
-  const { status, page = 1, limit = 10, all } = req.query;
-  
-  let filtered = projects;
-  if (status && status !== 'all') {
-    filtered = projects.filter(p => p.status === status);
+module.exports = async (req, res) => {
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    res.status(200).set(corsHeaders).end();
+    return;
   }
-  
-  if (all === 'true') {
-    return res.json({ data: filtered, total: filtered.length });
-  }
-  
-  const startIndex = (page - 1) * limit;
-  const paginated = filtered.slice(startIndex, startIndex + parseInt(limit));
-  
-  res.json({
-    data: paginated,
-    total: filtered.length,
-    page: parseInt(page),
-    limit: parseInt(limit)
+
+  // Set CORS headers
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    res.setHeader(key, value);
   });
-});
 
-// SEO Settings
-app.get('/api/seo-settings', (req, res) => {
-  res.json(seoSettings);
-});
+  const url = req.url;
 
-// AI Chat with Groq
-app.post('/api/chat', async (req, res) => {
   try {
-    const { message } = req.body;
-    
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
+    // Health check
+    if (url === '/api' || url === '/api/') {
+      return res.json({ status: 'ok', message: 'Portfolio API is running' });
     }
 
-    if (!process.env.GROQ_API_KEY) {
-      return res.status(500).json({ error: 'Groq API key not configured' });
+    // Personal Info
+    if (url === '/api/personal-info') {
+      return res.json(personalInfo);
     }
 
-    const systemPrompt = `Kamu adalah AI Assistant untuk portfolio Naufal Ananta, seorang Full Stack Developer dari Indonesia.
+    // Tech Stacks
+    if (url === '/api/tech-stacks') {
+      return res.json(techStacks.filter(t => t.isActive));
+    }
+
+    // SEO Settings
+    if (url === '/api/seo-settings') {
+      return res.json(seoSettings);
+    }
+
+    // Projects
+    if (url.startsWith('/api/projects')) {
+      const { status, page = 1, limit = 10, all } = req.query || {};
+      
+      let filtered = projects;
+      if (status && status !== 'all') {
+        filtered = projects.filter(p => p.status === status);
+      }
+      
+      if (all === 'true') {
+        return res.json({ data: filtered, total: filtered.length });
+      }
+      
+      const startIndex = (parseInt(page) - 1) * parseInt(limit);
+      const paginated = filtered.slice(startIndex, startIndex + parseInt(limit));
+      
+      return res.json({
+        data: paginated,
+        total: filtered.length,
+        page: parseInt(page),
+        limit: parseInt(limit)
+      });
+    }
+
+    // AI Chat
+    if (url === '/api/chat' && req.method === 'POST') {
+      const { message } = req.body || {};
+      
+      if (!message) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
+
+      if (!process.env.GROQ_API_KEY) {
+        return res.status(500).json({ error: 'Groq API key not configured' });
+      }
+
+      const systemPrompt = `Kamu adalah AI Assistant untuk portfolio Naufal Ananta, seorang Full Stack Developer dari Indonesia.
 
 Informasi tentang Naufal:
 - Nama: Naufal Ananta
@@ -153,35 +164,30 @@ Project yang pernah dikerjakan:
 
 Jawab pertanyaan pengunjung dengan ramah, informatif, dan dalam Bahasa Indonesia. Jika ditanya hal di luar konteks portfolio, tetap jawab dengan sopan tapi arahkan kembali ke portfolio.`;
 
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.7,
-      max_tokens: 1024,
-    });
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message }
+        ],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.7,
+        max_tokens: 1024,
+      });
 
-    const reply = chatCompletion.choices[0]?.message?.content || 'Maaf, saya tidak bisa merespons saat ini.';
+      const reply = chatCompletion.choices[0]?.message?.content || 'Maaf, saya tidak bisa merespons saat ini.';
 
-    res.json({ reply });
+      return res.json({ reply });
+    }
+
+    // 404
+    return res.status(404).json({ error: 'Not found' });
+
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ 
+    console.error('API error:', error);
+    return res.status(500).json({ 
       message: error.message || 'Internal Server Error',
       error: 'Internal Server Error',
       statusCode: 500
     });
   }
-});
-
-// For local development
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-module.exports = app;
+};
