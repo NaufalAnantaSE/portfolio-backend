@@ -137,7 +137,7 @@ app.post('/api/chat', async (req, res) => {
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
     
     const systemPrompt = `Kamu adalah AI Assistant untuk portfolio Naufal Ananta, seorang Full Stack Developer dari Indonesia.
 
