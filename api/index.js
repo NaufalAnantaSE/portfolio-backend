@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 
 const app = express();
 
@@ -8,8 +8,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Initialize Groq
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ============== DATA ==============
 const personalInfo = {
@@ -124,7 +124,7 @@ app.get('/api/seo-settings', (req, res) => {
   res.json(seoSettings);
 });
 
-// AI Chat
+// AI Chat with Groq
 app.post('/api/chat', async (req, res) => {
   try {
     const { message } = req.body;
@@ -133,12 +133,10 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'Gemini API key not configured' });
+    if (!process.env.GROQ_API_KEY) {
+      return res.status(500).json({ error: 'Groq API key not configured' });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
-    
     const systemPrompt = `Kamu adalah AI Assistant untuk portfolio Naufal Ananta, seorang Full Stack Developer dari Indonesia.
 
 Informasi tentang Naufal:
@@ -155,21 +153,17 @@ Project yang pernah dikerjakan:
 
 Jawab pertanyaan pengunjung dengan ramah, informatif, dan dalam Bahasa Indonesia. Jika ditanya hal di luar konteks portfolio, tetap jawab dengan sopan tapi arahkan kembali ke portfolio.`;
 
-    const chat = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [{ text: systemPrompt }],
-        },
-        {
-          role: "model", 
-          parts: [{ text: "Baik, saya siap membantu sebagai AI Assistant portfolio Naufal Ananta. Ada yang bisa saya bantu?" }],
-        },
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message }
       ],
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.7,
+      max_tokens: 1024,
     });
 
-    const result = await chat.sendMessage(message);
-    const reply = result.response.text();
+    const reply = chatCompletion.choices[0]?.message?.content || 'Maaf, saya tidak bisa merespons saat ini.';
 
     res.json({ reply });
   } catch (error) {
