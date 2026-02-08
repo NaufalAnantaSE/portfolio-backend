@@ -1,7 +1,4 @@
-const Groq = require('groq-sdk');
-
-// Initialize Groq
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Initialize Groq with fetch fallback
 
 // ============== DATA ==============
 const personalInfo = {
@@ -77,6 +74,50 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// Groq chat function using fetch
+async function chatWithGroq(message) {
+  const systemPrompt = `Kamu adalah AI Assistant untuk portfolio Naufal Ananta, seorang Full Stack Developer dari Indonesia.
+
+Informasi tentang Naufal:
+- Nama: Naufal Ananta
+- Profesi: Full Stack Developer
+- Skills: React, Node.js, TypeScript, Next.js, Astro.js, PostgreSQL, MongoDB, Docker
+- Email: anantanaufal250@gmail.com
+- GitHub: https://github.com/NaufalAnantaSE
+
+Project yang pernah dikerjakan:
+1. Portfolio Website - Website portfolio dengan Astro.js dan AI chatbot
+2. Comparativo - Aplikasi perbandingan performa gRPC vs REST API
+3. Eduline - Platform edukasi online
+
+Jawab pertanyaan pengunjung dengan ramah, informatif, dan dalam Bahasa Indonesia. Jika ditanya hal di luar konteks portfolio, tetap jawab dengan sopan tapi arahkan kembali ke portfolio.`;
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message }
+      ],
+      temperature: 0.7,
+      max_tokens: 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Groq API error: ${response.status} - ${error}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || 'Maaf, saya tidak bisa merespons saat ini.';
+}
+
 module.exports = async (req, res) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -145,37 +186,10 @@ module.exports = async (req, res) => {
       }
 
       if (!process.env.GROQ_API_KEY) {
-        return res.status(500).json({ error: 'Groq API key not configured' });
+        return res.status(500).json({ error: 'Groq API key not configured', keyPresent: false });
       }
 
-      const systemPrompt = `Kamu adalah AI Assistant untuk portfolio Naufal Ananta, seorang Full Stack Developer dari Indonesia.
-
-Informasi tentang Naufal:
-- Nama: Naufal Ananta
-- Profesi: Full Stack Developer
-- Skills: React, Node.js, TypeScript, Next.js, Astro.js, PostgreSQL, MongoDB, Docker
-- Email: anantanaufal250@gmail.com
-- GitHub: https://github.com/NaufalAnantaSE
-
-Project yang pernah dikerjakan:
-1. Portfolio Website - Website portfolio dengan Astro.js dan AI chatbot
-2. Comparativo - Aplikasi perbandingan performa gRPC vs REST API
-3. Eduline - Platform edukasi online
-
-Jawab pertanyaan pengunjung dengan ramah, informatif, dan dalam Bahasa Indonesia. Jika ditanya hal di luar konteks portfolio, tetap jawab dengan sopan tapi arahkan kembali ke portfolio.`;
-
-      const chatCompletion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: message }
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.7,
-        max_tokens: 1024,
-      });
-
-      const reply = chatCompletion.choices[0]?.message?.content || 'Maaf, saya tidak bisa merespons saat ini.';
-
+      const reply = await chatWithGroq(message);
       return res.json({ reply });
     }
 
